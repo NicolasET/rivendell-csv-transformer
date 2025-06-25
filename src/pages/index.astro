@@ -8,8 +8,9 @@
 
   interface InputRow {
     created_time?: string;
-    correo_electrónico?: string;
+    "full name"?: string;
     número_de_teléfono?: string;
+    correo_electrónico?: string;
     estado?: string;
     lead_status?: string;
     [key: string]: string | undefined;
@@ -17,50 +18,269 @@
 
   interface TransformedRow {
     createdAt: string;
-    email: string;
+    name: string;
+    paternalSurname: string;
+    maternalSurname: string;
     phone: string;
+    email: string;
     state: string;
     completed: boolean;
+    origen: string;
   }
 
   const DEFAULT_STATE = "Ciudad de México";
-  // Map of Mexican states for normalization
-  const stateMap: Record<string, string> = {
-    Aguascalientes: "Aguascalientes",
-    "Baja California": "Baja California",
-    "Baja California Sur": "Baja California Sur",
-    Campeche: "Campeche",
-    Chiapas: "Chiapas",
-    Chihuahua: "Chihuahua",
-    "Ciudad de México": "Ciudad de México",
-    Coahuila: "Coahuila",
-    Colima: "Colima",
-    Durango: "Durango",
-    "Estado de México": "Estado de México",
-    Guanajuato: "Guanajuato",
-    Guerrero: "Guerrero",
-    Hidalgo: "Hidalgo",
-    Jalisco: "Jalisco",
-    Michoacán: "Michoacán",
-    Morelos: "Morelos",
-    Nayarit: "Nayarit",
-    "Nuevo León": "Nuevo León",
-    Oaxaca: "Oaxaca",
-    Puebla: "Puebla",
-    Querétaro: "Querétaro",
-    "Quintana Roo": "Quintana Roo",
-    "San Luis Potosí": "San Luis Potosí",
-    Sinaloa: "Sinaloa",
-    Sonora: "Sonora",
-    Tabasco: "Tabasco",
-    Tamaulipas: "Tamaulipas",
-    Tlaxcala: "Tlaxcala",
-    Veracruz: "Veracruz",
-    Yucatán: "Yucatán",
-    Zacatecas: "Zacatecas",
-  } as const;
 
-  let transformedCSV: string = "";
+  // Set of valid Mexican states for better performance
+  const validMexicanStates = new Set([
+    "Aguascalientes",
+    "Baja California",
+    "Baja California Sur",
+    "Campeche",
+    "Chiapas",
+    "Chihuahua",
+    "Ciudad de México",
+    "Coahuila",
+    "Colima",
+    "Durango",
+    "Estado de México",
+    "Guanajuato",
+    "Guerrero",
+    "Hidalgo",
+    "Jalisco",
+    "Michoacán",
+    "Morelos",
+    "Nayarit",
+    "Nuevo León",
+    "Oaxaca",
+    "Puebla",
+    "Querétaro",
+    "Quintana Roo",
+    "San Luis Potosí",
+    "Sinaloa",
+    "Sonora",
+    "Tabasco",
+    "Tamaulipas",
+    "Tlaxcala",
+    "Veracruz",
+    "Yucatán",
+    "Zacatecas",
+  ]);
+
+  // Common Mexican names and surnames for better detection
+  const commonNames = new Set([
+    "maría",
+    "jose",
+    "juan",
+    "ana",
+    "luis",
+    "carlos",
+    "francisco",
+    "antonio",
+    "jesús",
+    "alejandro",
+    "miguel",
+    "manuel",
+    "rafael",
+    "pedro",
+    "daniel",
+    "fernando",
+    "jorge",
+    "roberto",
+    "ricardo",
+    "eduardo",
+    "alberto",
+    "sergio",
+    "raúl",
+    "oscar",
+    "enrique",
+    "gerardo",
+    "arturo",
+    "marco",
+    "diego",
+    "rodrigo",
+    "alfredo",
+    "irene",
+    "guadalupe",
+    "alan",
+    "azael",
+    "manolo",
+    "abel",
+    "valentina",
+    "kim",
+  ]);
+
+  const commonSurnameParticles = new Set([
+    "de",
+    "del",
+    "la",
+    "las",
+    "los",
+    "da",
+    "das",
+    "do",
+    "dos",
+  ]);
+
+  let transformedCSV = "";
+
+  function separateFullName(fullName?: string): {
+    name: string;
+    paternalSurname: string;
+    maternalSurname: string;
+  } {
+    if (!fullName) {
+      return { name: "", paternalSurname: "", maternalSurname: "" };
+    }
+
+    // Clean and normalize the name
+    const cleanName = fullName
+      .trim()
+      .replace(/\s+/g, " ") // Remove extra spaces
+      .toLowerCase();
+
+    const parts = cleanName.split(" ");
+
+    if (parts.length === 0) {
+      return { name: "", paternalSurname: "", maternalSurname: "" };
+    }
+
+    // Helper function to capitalize first letter
+    const capitalize = (str: string) =>
+      str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+
+    if (parts.length === 1) {
+      // Only one word - treat as first name
+      return {
+        name: capitalize(parts[0]),
+        paternalSurname: "",
+        maternalSurname: "",
+      };
+    }
+
+    if (parts.length === 2) {
+      // Two words - first name + paternal surname
+      return {
+        name: capitalize(parts[0]),
+        paternalSurname: capitalize(parts[1]),
+        maternalSurname: "",
+      };
+    }
+
+    // For 3 or more parts
+    let nameEndIndex = 0;
+
+    // Strategy 1: Look for compound first names (María + another name)
+    if (parts[0] === "maría" && parts.length >= 3) {
+      // María + second name is likely the full first name
+      nameEndIndex = 1;
+    }
+    // Strategy 2: Look for compound first names (Juan Carlos, etc.)
+    else if (
+      commonNames.has(parts[0]) &&
+      commonNames.has(parts[1]) &&
+      parts.length >= 4
+    ) {
+      nameEndIndex = 1;
+    }
+    // Strategy 3: Check if second word is also a common first name
+    else if (
+      commonNames.has(parts[1]) &&
+      !isLikelySurname(parts[1]) &&
+      parts.length >= 4
+    ) {
+      nameEndIndex = 1;
+    }
+    // Default: first word is the name
+    else {
+      nameEndIndex = 0;
+    }
+
+    // Extract name(s)
+    const names = parts.slice(0, nameEndIndex + 1);
+    const remainingParts = parts.slice(nameEndIndex + 1);
+
+    if (remainingParts.length === 0) {
+      return {
+        name: names.map(capitalize).join(" "),
+        paternalSurname: "",
+        maternalSurname: "",
+      };
+    }
+
+    if (remainingParts.length === 1) {
+      return {
+        name: names.map(capitalize).join(" "),
+        paternalSurname: capitalize(remainingParts[0]),
+        maternalSurname: "",
+      };
+    }
+
+    // Handle surname particles (de, del, etc.)
+    let paternalSurnameEnd = 0;
+
+    // Look for surname particles to group with the surname
+    for (let i = 0; i < remainingParts.length - 1; i++) {
+      if (commonSurnameParticles.has(remainingParts[i])) {
+        paternalSurnameEnd = i + 1; // Include the particle and next word
+        break;
+      }
+    }
+
+    // If no particles found, assume first remaining word is paternal surname
+    if (paternalSurnameEnd === 0) {
+      paternalSurnameEnd = 0;
+    }
+
+    const paternalSurnameParts = remainingParts.slice(
+      0,
+      paternalSurnameEnd + 1
+    );
+    const maternalSurnameParts = remainingParts.slice(paternalSurnameEnd + 1);
+
+    return {
+      name: names.map(capitalize).join(" "),
+      paternalSurname: paternalSurnameParts.map(capitalize).join(" "),
+      maternalSurname: maternalSurnameParts.map(capitalize).join(" "),
+    };
+  }
+
+  function isLikelySurname(word: string): boolean {
+    const commonSurnames = new Set([
+      "gonzález",
+      "rodríguez",
+      "garcía",
+      "martínez",
+      "lópez",
+      "hernández",
+      "pérez",
+      "sánchez",
+      "ramírez",
+      "torres",
+      "flores",
+      "rivera",
+      "gómez",
+      "díaz",
+      "cruz",
+      "morales",
+      "ortega",
+      "esquivel",
+      "león",
+      "vázquez",
+      "alcalá",
+      "novelo",
+      "barragan",
+      "benítez",
+      "ordoñez",
+      "nava",
+      "sabas",
+      "morgan",
+      "andrade",
+      "gorab",
+      "metri",
+    ]);
+
+    return commonSurnames.has(word.toLowerCase());
+  }
 
   function formatPhone(phone?: string): string {
     if (!phone) return "";
@@ -96,27 +316,27 @@
     const inputState = estado.trim();
 
     // First, try exact match (case-insensitive)
-    for (const [key, value] of Object.entries(stateMap)) {
-      if (key.toLowerCase() === inputState.toLowerCase()) {
-        return value;
+    for (const state of validMexicanStates) {
+      if (state.toLowerCase() === inputState.toLowerCase()) {
+        return state;
       }
     }
 
     // Try partial match (fuzzy matching)
-    for (const [key, value] of Object.entries(stateMap)) {
-      const keyWords = key.toLowerCase().split(/\s+/);
+    for (const state of validMexicanStates) {
+      const stateWords = state.toLowerCase().split(/\s+/);
       const inputWords = inputState.toLowerCase().split(/\s+/);
 
       // Check if any word from input matches any word from state name
       const hasMatch = inputWords.some((inputWord) =>
-        keyWords.some(
-          (keyWord) =>
-            keyWord.includes(inputWord) || inputWord.includes(keyWord)
+        stateWords.some(
+          (stateWord) =>
+            stateWord.includes(inputWord) || inputWord.includes(stateWord)
         )
       );
 
       if (hasMatch) {
-        return value;
+        return state;
       }
     }
 
@@ -130,14 +350,14 @@
 
     const normalizedInput = normalizeText(inputState);
 
-    for (const [key, value] of Object.entries(stateMap)) {
-      const normalizedKey = normalizeText(key);
+    for (const state of validMexicanStates) {
+      const normalizedState = normalizeText(state);
 
       if (
-        normalizedKey.includes(normalizedInput) ||
-        normalizedInput.includes(normalizedKey)
+        normalizedState.includes(normalizedInput) ||
+        normalizedInput.includes(normalizedState)
       ) {
-        return value;
+        return state;
       }
     }
 
@@ -150,15 +370,23 @@
       .filter((row: InputRow) =>
         Object.values(row).some((val) => val && val.trim())
       ) // Remove empty rows
-      .map(
-        (row: InputRow): TransformedRow => ({
+      .map((row: InputRow): TransformedRow => {
+        const { name, paternalSurname, maternalSurname } = separateFullName(
+          row["full name"]
+        );
+
+        return {
           createdAt: formatDate(row["created_time"]),
-          email: row["correo_electrónico"] || "",
+          name,
+          paternalSurname,
+          maternalSurname,
           phone: formatPhone(row["número_de_teléfono"]),
+          email: row["correo_electrónico"] || "",
           state: normalizeState(row["estado"]),
           completed: row["lead_status"]?.toLowerCase() === "complete",
-        })
-      );
+          origen: "Meta",
+        };
+      });
   }
 
   document
