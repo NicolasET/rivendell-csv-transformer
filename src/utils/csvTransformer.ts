@@ -21,6 +21,9 @@ export function transformData(data: InputRow[]): TransformedRow[] {
         phone: formatPhone(row["número_de_teléfono"]),
         email: row["correo_electrónico"] || "",
         state: normalizeState(row["estado"]),
+        budget:
+          row["define_el_presupuesto_deseado_para_tu_nuevo_vehículo_"] || "",
+        carCategory: row["selecciona_la_categoría_que_más_te_guste_para_empezar"] || "",
         completed: row["lead_status"]?.toLowerCase() === "complete",
         origen: "Meta",
       };
