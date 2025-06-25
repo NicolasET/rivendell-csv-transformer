@@ -2,15 +2,144 @@
 
 ---
 
+<script>
+  import Papa from "papaparse";
+
+  interface InputRow {
+    created_time?: string;
+    correo_electrónico?: string;
+    número_de_teléfono?: string;
+    estado?: string;
+    lead_status?: string;
+    [key: string]: string | undefined;
+  }
+
+  interface TransformedRow {
+    createdAt: string;
+    email: string;
+    phone: string;
+    state: string;
+    completed: boolean;
+  }
+
+  const stateMap: Record<string, string> = {
+    Aguascalientes: "AGUASCALIENTES",
+    "Baja California": "BAJA_CALIFORNIA",
+    "Baja California Sur": "BAJA_CALIFORNIA_SUR",
+    Campeche: "CAMPECHE",
+    Chiapas: "CHIAPAS",
+    Chihuahua: "CHIHUAHUA",
+    "Ciudad de México": "CIUDAD_DE_MEXICO",
+    Coahuila: "COAHUILA",
+    Colima: "COLIMA",
+    Durango: "DURANGO",
+    "Estado de México": "ESTADO_DE_MEXICO",
+    Guanajuato: "GUANAJUATO",
+    Guerrero: "GUERRERO",
+    Hidalgo: "HIDALGO",
+    Jalisco: "JALISCO",
+    Michoacán: "MICHOACAN",
+    Morelos: "MORELOS",
+    Nayarit: "NAYARIT",
+    "Nuevo León": "NUEVO_LEON",
+    Oaxaca: "OAXACA",
+    Puebla: "PUEBLA",
+    Querétaro: "QUERETARO",
+    "Quintana Roo": "QUINTANA_ROO",
+    "San Luis Potosí": "SAN_LUIS_POTOSI",
+    Sinaloa: "SINALOA",
+    Sonora: "SONORA",
+    Tabasco: "TABASCO",
+    Tamaulipas: "TAMAULIPAS",
+    Tlaxcala: "TLAXCALA",
+    Veracruz: "VERACRUZ",
+    Yucatán: "YUCATAN",
+    Zacatecas: "ZACATECAS",
+  } as const;
+
+  let transformedCSV: string = "";
+
+  function formatPhone(phone: string | undefined): string {
+    if (!phone) return "";
+
+    const digits = phone.replace(/\D/g, "");
+    return digits.length === 10 ? digits : "";
+  }
+
+  function formatDate(dateStr: string | undefined): string {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "";
+    const pad = (n: number): string => n.toString().padStart(2, "0");
+    return `${pad(date.getMonth() + 1)}/${pad(date.getDate())}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function transformData(data: InputRow[]): TransformedRow[] {
+    return data
+      .filter((row: InputRow) =>
+        Object.values(row).some((val) => val && val.trim())
+      ) // Remove empty rows
+      .map(
+        (row: InputRow): TransformedRow => ({
+          createdAt: formatDate(row["created_time"]),
+          email: row["correo_electrónico"] || "",
+          phone: formatPhone(row["número_de_teléfono"]),
+          state: stateMap[row["estado"] || ""] || row["estado"] || "",
+          completed: row["lead_status"]?.toLowerCase() === "completed",
+        })
+      );
+  }
+
+  document
+    .getElementById("fileInput")
+    ?.addEventListener("change", function (e: Event) {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
+      if (!file) return;
+
+      Papa.parse(file, {
+        header: true,
+        complete: function (results: any) {
+          const transformed = transformData(results.data as InputRow[]);
+          transformedCSV = Papa.unparse(transformed);
+          alert("CSV processed successfully. Click 'Download target.csv'");
+        },
+        error: function (err: any) {
+          alert("Failed to parse CSV: " + err.message);
+        },
+      });
+    });
+
+  function downloadCSV() {
+    if (!transformedCSV) {
+      alert("No file processed.");
+      return;
+    }
+    const blob = new Blob([transformedCSV], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "target.csv";
+    link.click();
+  }
+
+  document
+    .getElementById("downloadBtn")
+    ?.addEventListener("click", downloadCSV);
+</script>
+
 <html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>Astro</title>
+  </head>
+  <body>
+    <h2>Upload form.csv</h2>
+    <input type="file" id="fileInput" accept=".csv" />
+    <button id="downloadBtn">Download target.csv</button>
+  </body>
 </html>
