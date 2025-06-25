@@ -4,6 +4,7 @@
 
 <script>
   import Papa from "papaparse";
+  import dayjs from "../config/dayjs";
 
   interface InputRow {
     created_time?: string;
@@ -22,56 +23,126 @@
     completed: boolean;
   }
 
+  const DEFAULT_STATE = "Ciudad de México";
+  // Map of Mexican states for normalization
   const stateMap: Record<string, string> = {
-    Aguascalientes: "AGUASCALIENTES",
-    "Baja California": "BAJA_CALIFORNIA",
-    "Baja California Sur": "BAJA_CALIFORNIA_SUR",
-    Campeche: "CAMPECHE",
-    Chiapas: "CHIAPAS",
-    Chihuahua: "CHIHUAHUA",
-    "Ciudad de México": "CIUDAD_DE_MEXICO",
-    Coahuila: "COAHUILA",
-    Colima: "COLIMA",
-    Durango: "DURANGO",
-    "Estado de México": "ESTADO_DE_MEXICO",
-    Guanajuato: "GUANAJUATO",
-    Guerrero: "GUERRERO",
-    Hidalgo: "HIDALGO",
-    Jalisco: "JALISCO",
-    Michoacán: "MICHOACAN",
-    Morelos: "MORELOS",
-    Nayarit: "NAYARIT",
-    "Nuevo León": "NUEVO_LEON",
-    Oaxaca: "OAXACA",
-    Puebla: "PUEBLA",
-    Querétaro: "QUERETARO",
-    "Quintana Roo": "QUINTANA_ROO",
-    "San Luis Potosí": "SAN_LUIS_POTOSI",
-    Sinaloa: "SINALOA",
-    Sonora: "SONORA",
-    Tabasco: "TABASCO",
-    Tamaulipas: "TAMAULIPAS",
-    Tlaxcala: "TLAXCALA",
-    Veracruz: "VERACRUZ",
-    Yucatán: "YUCATAN",
-    Zacatecas: "ZACATECAS",
+    Aguascalientes: "Aguascalientes",
+    "Baja California": "Baja California",
+    "Baja California Sur": "Baja California Sur",
+    Campeche: "Campeche",
+    Chiapas: "Chiapas",
+    Chihuahua: "Chihuahua",
+    "Ciudad de México": "Ciudad de México",
+    Coahuila: "Coahuila",
+    Colima: "Colima",
+    Durango: "Durango",
+    "Estado de México": "Estado de México",
+    Guanajuato: "Guanajuato",
+    Guerrero: "Guerrero",
+    Hidalgo: "Hidalgo",
+    Jalisco: "Jalisco",
+    Michoacán: "Michoacán",
+    Morelos: "Morelos",
+    Nayarit: "Nayarit",
+    "Nuevo León": "Nuevo León",
+    Oaxaca: "Oaxaca",
+    Puebla: "Puebla",
+    Querétaro: "Querétaro",
+    "Quintana Roo": "Quintana Roo",
+    "San Luis Potosí": "San Luis Potosí",
+    Sinaloa: "Sinaloa",
+    Sonora: "Sonora",
+    Tabasco: "Tabasco",
+    Tamaulipas: "Tamaulipas",
+    Tlaxcala: "Tlaxcala",
+    Veracruz: "Veracruz",
+    Yucatán: "Yucatán",
+    Zacatecas: "Zacatecas",
   } as const;
 
   let transformedCSV: string = "";
 
-  function formatPhone(phone: string | undefined): string {
+  function formatPhone(phone?: string): string {
     if (!phone) return "";
 
+    // Remove all non-digit characters
     const digits = phone.replace(/\D/g, "");
-    return digits.length === 10 ? digits : "";
+
+    // Check if it starts with 52 (Mexico country code)
+    if (digits.startsWith("52") && digits.length === 12) {
+      // Remove the country code and return the 10-digit number
+      return digits.substring(2);
+    }
+
+    // If it doesn't match Mexican format, return empty
+    return "";
   }
 
-  function formatDate(dateStr: string | undefined): string {
+  function formatDate(dateStr?: string): string {
     if (!dateStr) return "";
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return "";
-    const pad = (n: number): string => n.toString().padStart(2, "0");
-    return `${pad(date.getMonth() + 1)}/${pad(date.getDate())}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+
+    // Try to parse the date with dayjs
+    const date = dayjs(dateStr);
+
+    // Check if the date is valid
+    if (!date.isValid()) return "";
+
+    return date.tz().format("YYYY-MM-DD");
+  }
+
+  function normalizeState(estado?: string): string {
+    if (!estado) return DEFAULT_STATE;
+
+    const inputState = estado.trim();
+
+    // First, try exact match (case-insensitive)
+    for (const [key, value] of Object.entries(stateMap)) {
+      if (key.toLowerCase() === inputState.toLowerCase()) {
+        return value;
+      }
+    }
+
+    // Try partial match (fuzzy matching)
+    for (const [key, value] of Object.entries(stateMap)) {
+      const keyWords = key.toLowerCase().split(/\s+/);
+      const inputWords = inputState.toLowerCase().split(/\s+/);
+
+      // Check if any word from input matches any word from state name
+      const hasMatch = inputWords.some((inputWord) =>
+        keyWords.some(
+          (keyWord) =>
+            keyWord.includes(inputWord) || inputWord.includes(keyWord)
+        )
+      );
+
+      if (hasMatch) {
+        return value;
+      }
+    }
+
+    // Try removing accents and special characters for better matching
+    const normalizeText = (text: string) =>
+      text
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // Remove accents
+        .replace(/[^a-z\s]/g, ""); // Remove special characters
+
+    const normalizedInput = normalizeText(inputState);
+
+    for (const [key, value] of Object.entries(stateMap)) {
+      const normalizedKey = normalizeText(key);
+
+      if (
+        normalizedKey.includes(normalizedInput) ||
+        normalizedInput.includes(normalizedKey)
+      ) {
+        return value;
+      }
+    }
+
+    // If no match found, return default state
+    return DEFAULT_STATE;
   }
 
   function transformData(data: InputRow[]): TransformedRow[] {
@@ -84,8 +155,8 @@
           createdAt: formatDate(row["created_time"]),
           email: row["correo_electrónico"] || "",
           phone: formatPhone(row["número_de_teléfono"]),
-          state: stateMap[row["estado"] || ""] || row["estado"] || "",
-          completed: row["lead_status"]?.toLowerCase() === "completed",
+          state: normalizeState(row["estado"]),
+          completed: row["lead_status"]?.toLowerCase() === "complete",
         })
       );
   }
@@ -101,18 +172,20 @@
         header: true,
         complete: function (results: any) {
           const transformed = transformData(results.data as InputRow[]);
-          transformedCSV = Papa.unparse(transformed);
-          alert("CSV processed successfully. Click 'Download target.csv'");
+          transformedCSV = Papa.unparse(transformed, {
+            header: true,
+          });
+          alert("CSV procesado con éxito. Haga clic en 'Descargar target.csv'");
         },
         error: function (err: any) {
-          alert("Failed to parse CSV: " + err.message);
+          alert("Error al analizar CSV: " + err.message);
         },
       });
     });
 
   function downloadCSV() {
     if (!transformedCSV) {
-      alert("No file processed.");
+      alert("No se ha procesado ningún archivo.");
       return;
     }
     const blob = new Blob([transformedCSV], {
@@ -121,6 +194,13 @@
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "target.csv";
+    link.setAttribute("charset", "utf-8");
+
+    // UTF-8 encoding with accents
+    const bomBlob = new Blob(["\uFEFF" + transformedCSV], {
+      type: "text/csv;charset=utf-8;",
+    });
+    link.href = URL.createObjectURL(bomBlob);
     link.click();
   }
 
@@ -129,17 +209,17 @@
     ?.addEventListener("click", downloadCSV);
 </script>
 
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width" />
     <meta name="generator" content={Astro.generator} />
-    <title>Astro</title>
+    <title>Rivendell CSV Transformer</title>
   </head>
   <body>
-    <h2>Upload form.csv</h2>
+    <h2>Subir archivo META</h2>
     <input type="file" id="fileInput" accept=".csv" />
-    <button id="downloadBtn">Download target.csv</button>
+    <button id="downloadBtn">Descargar Rivendell.csv</button>
   </body>
 </html>
