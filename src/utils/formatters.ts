@@ -29,7 +29,7 @@ export function formatDate(dateStr?: string): string {
   // Format: 20/04/2020  01:58:28 p. m.
   return date
     .tz("America/Mexico_City")
-    .format("DD/MM/YYYY  hh:mm:ss A")
+    .format("YYYY-MM-DDTHH:mm:ss.SSSZ")
     .replace("AM", "a. m.")
     .replace("PM", "p. m.");
 }
