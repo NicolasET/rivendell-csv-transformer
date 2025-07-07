@@ -19,6 +19,7 @@ import '../styles/global.css'
       Papa.parse(file, {
         header: true,
         encoding: "utf-8",
+        delimiter: '\t',
         complete: function (results: any) {
           const transformed = transformData(results.data as InputRow[]);
           transformedCSV = Papa.unparse(transformed, {
